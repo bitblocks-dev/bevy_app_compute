@@ -6,14 +6,13 @@ use std::{
 };
 
 use bevy::{
-    platform::collections::HashMap,
-    prelude::{Res, ResMut, Resource},
-    render::{
-        render_resource::{Buffer, ComputePipeline},
+    platform::collections::HashMap, prelude::{Res, ResMut, Resource}, render::{
+        render_resource::{Buffer, ComputePipeline, IntoBinding, Sampler, TextureView},
         renderer::{RenderDevice, RenderQueue},
-    },
+    }
 };
 use bytemuck::{AnyBitPattern, NoUninit, bytes_of, cast_slice, from_bytes};
+use tracing::debug;
 use wgpu::{BindGroupEntry, CommandEncoder, CommandEncoderDescriptor, ComputePassDescriptor};
 
 use crate::{
@@ -47,6 +46,8 @@ pub(crate) enum Step {
 pub(crate) struct ComputePass {
     pub(crate) workgroups: [u32; 3],
     pub(crate) vars: Vec<String>,
+    pub(crate) samplers: Option<Vec<Sampler>>,
+    pub(crate) texture_views: Option<Vec<TextureView>>,
     pub(crate) shader_type_path: String,
 }
 
@@ -123,6 +124,8 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
             Step::Swap(_, _) => return Err(Error::InvalidStep(format!("{:?}", self.steps[index]))),
         };
 
+        let mut highest_buffer_index = 0u32;
+
         let mut entries = vec![];
         for (index, var) in compute_pass.vars.iter().enumerate() {
             let Some(buffer) = self.buffers.get(var) else {
@@ -134,7 +137,45 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
                 resource: buffer.as_entire_binding(),
             };
 
+            if highest_buffer_index < index as u32 {
+                highest_buffer_index = index as u32;
+            }
+
             entries.push(entry);
+        }
+
+        if let Some(samplers) = &compute_pass.samplers {
+            for (index, sampler) in samplers.iter().enumerate() {
+                let id = sampler.id();
+                
+                debug!("Adding sampler {id:?}");
+
+                let entry = BindGroupEntry {
+                    binding: index as u32 + highest_buffer_index + 1,
+                    resource: sampler.into_binding(),
+                };
+
+                if highest_buffer_index < highest_buffer_index + index as u32 + 1 {
+                    highest_buffer_index = highest_buffer_index + index as u32 + 1;
+                }
+
+                entries.push(entry);
+            }
+        }
+
+        if let Some(texture_views) = &compute_pass.texture_views {
+            for (index, texture_view) in texture_views.iter().enumerate() {
+                let id = texture_view.id();
+                
+                debug!("Adding texture view {id:?}");
+
+                let entry = BindGroupEntry {
+                    binding: index as u32,
+                    resource: texture_view.into_binding(),
+                };
+
+                entries.push(entry);
+            }
         }
 
         let Some(maybe_pipeline) = self.pipelines.get(&compute_pass.shader_type_path) else {

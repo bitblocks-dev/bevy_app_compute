@@ -5,13 +5,12 @@ use bevy::{
     prelude::{AssetServer, World},
     render::{
         render_resource::{
-            Buffer, ComputePipelineDescriptor, ShaderRef, ShaderType,
-            encase::{StorageBuffer, UniformBuffer, private::WriteInto},
+            encase::{private::WriteInto, StorageBuffer, UniformBuffer}, Buffer, ComputePipelineDescriptor, Sampler, ShaderRef, ShaderType, Texture, TextureView
         },
         renderer::RenderDevice,
     },
 };
-use wgpu::{BufferDescriptor, BufferUsages, util::BufferInitDescriptor};
+use wgpu::{util::BufferInitDescriptor, BufferDescriptor, BufferUsages, SamplerDescriptor};
 
 use crate::{
     pipeline_cache::{AppCachedComputePipelineId, PipelineCache},
@@ -26,6 +25,8 @@ pub struct AppComputeWorkerBuilder<'a, W: ComputeWorker> {
     pub(crate) cached_pipeline_ids: HashMap<String, AppCachedComputePipelineId>,
     pub(crate) buffers: HashMap<String, Buffer>,
     pub(crate) staging_buffers: HashMap<String, StagingBuffer>,
+    pub(crate) samplers: Option<Vec<Sampler>>,
+    pub(crate) texture_views: Option<Vec<TextureView>>,
     pub(crate) steps: Vec<Step>,
     pub(crate) run_mode: RunMode,
     /// Maximum duration the compute shader will run asyncronously before being set to synchronous.
@@ -48,6 +49,8 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
             cached_pipeline_ids: HashMap::default(),
             buffers: HashMap::default(),
             staging_buffers: HashMap::default(),
+            samplers: Some(vec![]),
+            texture_views: Some(vec![]),
             steps: vec![],
             run_mode: RunMode::Continuous,
             maximum_async_time: Some(Duration::from_secs(0)),
@@ -245,6 +248,67 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         self
     }
 
+    ///
+    /// 
+    pub fn add_texture_view(&mut self, name: &str, texture_view: TextureView) -> &mut Self {
+        self.texture_views.as_mut().expect("texture view not initialized").push(texture_view);
+
+        self
+    }
+
+    /// 
+    /// 
+    pub fn add_sampler(&mut self, name: &str, sampler_desc: SamplerDescriptor) -> &mut Self {
+        let render_device = self.world.resource::<RenderDevice>();
+
+        let sampler = render_device.create_sampler(&sampler_desc);
+
+        self.samplers.as_mut().expect("sampler not initialized").push(sampler);
+
+        self
+    }
+
+
+    /// Add a new compute pass to your worker.
+    /// They will run sequentially in the order you insert them.
+    pub fn add_pass_with_samplers_and_texture_views<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[&str], samplers: Option<Vec<Sampler>>, texture_views: Option<Vec<TextureView>>) -> &mut Self {
+        if !self.cached_pipeline_ids.contains_key(S::type_path()) {
+            let pipeline_cache = self.world.resource::<PipelineCache>();
+
+            let asset_server = self.world.resource::<AssetServer>();
+            let shader = match S::shader() {
+                ShaderRef::Default => None,
+                ShaderRef::Handle(handle) => Some(handle),
+                ShaderRef::Path(path) => Some(asset_server.load(path)),
+            }
+            .unwrap();
+
+            let cached_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: None,
+                layout: S::layouts().to_vec(),
+                push_constant_ranges: S::push_constant_ranges().to_vec(),
+                shader_defs: S::shader_defs().to_vec(),
+                entry_point: Cow::Borrowed(S::entry_point()),
+                shader,
+                zero_initialize_workgroup_memory: false,
+            });
+
+            self.cached_pipeline_ids.insert(
+                S::type_path().to_string(),
+                AppCachedComputePipelineId(cached_id.id()),
+            );
+        }
+
+        self.steps.push(Step::ComputePass(ComputePass {
+            workgroups,
+            vars: vars.iter().map(|a| String::from(*a)).collect(),
+            samplers: samplers,
+            texture_views: texture_views,
+            shader_type_path: S::type_path().to_string(),
+        }));
+        self
+    }
+
     /// Add a new compute pass to your worker.
     /// They will run sequentially in the order you insert them.
     pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[&str]) -> &mut Self {
@@ -278,6 +342,8 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         self.steps.push(Step::ComputePass(ComputePass {
             workgroups,
             vars: vars.iter().map(|a| String::from(*a)).collect(),
+            samplers: None,
+            texture_views: None,
             shader_type_path: S::type_path().to_string(),
         }));
         self

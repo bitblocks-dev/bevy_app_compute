@@ -284,47 +284,6 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         self
     }
 
-
-    /// Add a new compute pass to your worker.
-    /// They will run sequentially in the order you insert them.
-    pub fn add_pass_with_samplers_and_texture_views<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[&str], samplers: Option<Vec<Sampler>>, texture_views: Option<Vec<TextureView>>) -> &mut Self {
-        if !self.cached_pipeline_ids.contains_key(S::type_path()) {
-            let pipeline_cache = self.world.resource::<PipelineCache>();
-
-            let asset_server = self.world.resource::<AssetServer>();
-            let shader = match S::shader() {
-                ShaderRef::Default => None,
-                ShaderRef::Handle(handle) => Some(handle),
-                ShaderRef::Path(path) => Some(asset_server.load(path)),
-            }
-            .unwrap();
-
-            let cached_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: None,
-                layout: S::layouts().to_vec(),
-                push_constant_ranges: S::push_constant_ranges().to_vec(),
-                shader_defs: S::shader_defs().to_vec(),
-                entry_point: Cow::Borrowed(S::entry_point()),
-                shader,
-                zero_initialize_workgroup_memory: false,
-            });
-
-            self.cached_pipeline_ids.insert(
-                S::type_path().to_string(),
-                AppCachedComputePipelineId(cached_id.id()),
-            );
-        }
-
-        self.steps.push(Step::ComputePass(ComputePass {
-            workgroups,
-            vars: vars.iter().map(|a| String::from(*a)).collect(),
-            samplers: samplers,
-            texture_views: texture_views,
-            shader_type_path: S::type_path().to_string(),
-        }));
-        self
-    }
-
     /// Add a new compute pass to your worker.
     /// They will run sequentially in the order you insert them.
     pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[&str]) -> &mut Self {
@@ -358,8 +317,8 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         self.steps.push(Step::ComputePass(ComputePass {
             workgroups,
             vars: vars.iter().map(|a| String::from(*a)).collect(),
-            samplers: None,
-            texture_views: None,
+            samplers: self.samplers.clone(),
+            texture_views: self.texture_views.clone(),
             shader_type_path: S::type_path().to_string(),
         }));
         self

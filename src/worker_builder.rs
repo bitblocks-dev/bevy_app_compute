@@ -10,7 +10,7 @@ use bevy::{
         renderer::RenderDevice,
     },
 };
-use wgpu::{util::BufferInitDescriptor, BufferDescriptor, BufferUsages, SamplerDescriptor};
+use wgpu::{util::BufferInitDescriptor, BufferDescriptor, BufferUsages, SamplerDescriptor, TextureDescriptor, TextureViewDescriptor};
 
 use crate::{
     pipeline_cache::{AppCachedComputePipelineId, PipelineCache},
@@ -250,12 +250,17 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     ///
     /// 
-    pub fn add_texture_view(&mut self, name: &str, texture_view: TextureView) -> &mut Self {
+    pub fn add_texture_view(&mut self, name: &str, texture_descriptor: &TextureDescriptor, texture_view_descriptor: &TextureViewDescriptor) -> &mut Self {
+
+        let render_device = self.world.resource::<RenderDevice>();
+        let texture = render_device.create_texture(texture_descriptor);
+
+        let texture_view = texture.create_view(texture_view_descriptor);
+
         self.texture_views.as_mut().expect("texture view not initialized").push(texture_view);
 
         self
     }
-
     /// 
     /// 
     pub fn add_sampler(&mut self, name: &str, sampler_desc: SamplerDescriptor) -> &mut Self {

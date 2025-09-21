@@ -248,7 +248,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     ///
     /// 
-    pub fn add_texture_view(&mut self, name: &str, image: &Image) -> &mut Self {
+    pub fn add_texture_view(&mut self, image: &Image) -> &mut Self {
 
         let render_device = self.world.resource::<RenderDevice>();
         let render_queue = self.world.resource::<RenderQueue>();
@@ -274,7 +274,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     }
     /// 
     ///
-    pub fn add_sampler(&mut self, name: &str, sampler_desc: SamplerDescriptor) -> &mut Self {
+    pub fn add_sampler(&mut self, sampler_desc: SamplerDescriptor) -> &mut Self {
         let render_device = self.world.resource::<RenderDevice>();
 
         let sampler = render_device.create_sampler(&sampler_desc);

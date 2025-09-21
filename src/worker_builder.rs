@@ -248,7 +248,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     ///
     /// 
-    pub fn add_texture_view(&mut self, name: &str, image: Image) -> &mut Self {
+    pub fn add_texture_view(&mut self, name: &str, image: &Image) -> &mut Self {
 
         let render_device = self.world.resource::<RenderDevice>();
         let render_queue = self.world.resource::<RenderQueue>();

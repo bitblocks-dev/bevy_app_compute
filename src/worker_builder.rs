@@ -1,16 +1,14 @@
 use std::{borrow::Cow, marker::PhantomData, time::Duration};
 
 use bevy::{
-    platform::collections::HashMap,
-    prelude::{AssetServer, World},
-    render::{
+    asset::Handle, image::Image, platform::collections::HashMap, prelude::{AssetServer, World}, render::{
         render_resource::{
             encase::{private::WriteInto, StorageBuffer, UniformBuffer}, Buffer, ComputePipelineDescriptor, Sampler, ShaderRef, ShaderType, Texture, TextureView
         },
-        renderer::RenderDevice,
-    },
+        renderer::{RenderDevice, RenderQueue},
+    }
 };
-use wgpu::{util::BufferInitDescriptor, BufferDescriptor, BufferUsages, SamplerDescriptor, TextureDescriptor, TextureViewDescriptor};
+use wgpu::{util::{BufferInitDescriptor, TextureDataOrder}, BufferDescriptor, BufferUsages, SamplerDescriptor, TextureDescriptor, TextureViewDescriptor};
 
 use crate::{
     pipeline_cache::{AppCachedComputePipelineId, PipelineCache},
@@ -250,19 +248,32 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     ///
     /// 
-    pub fn add_texture_view(&mut self, name: &str, texture_descriptor: &TextureDescriptor, texture_view_descriptor: &TextureViewDescriptor) -> &mut Self {
+    pub fn add_texture_view(&mut self, name: &str, image: Image) -> &mut Self {
 
         let render_device = self.world.resource::<RenderDevice>();
-        let texture = render_device.create_texture(texture_descriptor);
+        let render_queue = self.world.resource::<RenderQueue>();
 
-        let texture_view = texture.create_view(texture_view_descriptor);
+        let texture = render_device.create_texture_with_data(
+                render_queue,
+                &image.texture_descriptor,
+                TextureDataOrder::default(),
+                &image.data.clone().expect("Image data not found for texture view: {name}"),
+            );
+
+        let texture_view = texture.create_view(
+            image
+                .texture_view_descriptor.clone()
+                .or_else(|| Some(TextureViewDescriptor::default()))
+                .as_ref()
+                .unwrap(),
+        );
 
         self.texture_views.as_mut().expect("texture view not initialized").push(texture_view);
 
         self
     }
     /// 
-    /// 
+    ///
     pub fn add_sampler(&mut self, name: &str, sampler_desc: SamplerDescriptor) -> &mut Self {
         let render_device = self.world.resource::<RenderDevice>();
 
